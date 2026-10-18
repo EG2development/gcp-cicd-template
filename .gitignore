@@ -1,0 +1,27 @@
+# Terraform working files
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+tfplan.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Local variable files can hold private values; commit only the example.
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+# Local credentials and editor files
+.env
+.env.*
+*.pem
+*-key.json
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,5 @@
+# For local runs only. Copy to terraform.tfvars (git ignores it).
+# Cloud Build sets the same values from environments/<environment>.yaml.
+project_id  = "my-gcp-project"
+region      = "europe-west2"
+environment = "dev"

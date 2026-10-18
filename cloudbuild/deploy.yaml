@@ -1,0 +1,122 @@
+# Deployment for merges to main: revalidate, plan, check the plan, apply it,
+# then plan again to prove nothing is left to change. Runs as
+# tf-deploy-<environment>, after a Cloud Build approval if the environment
+# needs one (deploy.approval in environments/<environment>.yaml).
+#
+# The trigger (cicd/github.tf) supplies _ENVIRONMENT, _PROJECT_ID, _REGION and
+# _STATE_BUCKET. Each step prints "FAIL <step>: what to do" when it fails;
+# a failure in this file raises the deployment alert.
+substitutions:
+  # Approved Terraform image, pinned by digest. Change it in both YAML files.
+  _TF_IMAGE: europe-west2-docker.pkg.dev/gcp-cicd-template/terraform-runtime/terraform@sha256:8fff2a67f0d00ffbb8df2859a862ba8952e9d9cd96af7ae58be8dd743d5e3b17
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  env:
+    - TF_IN_AUTOMATION=1
+    - TF_INPUT=0
+    - TF_VAR_project_id=${_PROJECT_ID}
+    - TF_VAR_region=${_REGION}
+    - TF_VAR_environment=${_ENVIRONMENT}
+
+timeout: 3600s
+
+steps:
+  - id: preflight
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args: [scripts/preflight.sh, --ci]
+
+  - id: fmt
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        terraform fmt -check -recursive ||
+          { echo "FAIL fmt: main is not formatted; run 'terraform fmt -recursive' in a pull request."; exit 1; }
+
+  - id: init
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        terraform init -lockfile=readonly -backend-config=bucket=${_STATE_BUCKET} -backend-config=prefix=env/${_ENVIRONMENT} ||
+          { echo "FAIL init: check state bucket access (docs/how-to/troubleshoot-iam.md) and the lock file."; exit 1; }
+
+  - id: validate
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        terraform validate ||
+          { echo "FAIL validate: fix the errors above in a pull request."; exit 1; }
+
+  - id: tflint
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        tflint --recursive --format compact ||
+          { echo "FAIL tflint: fix the findings above in a pull request."; exit 1; }
+
+  - id: security
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL . ||
+          { echo "FAIL security: fix the HIGH or CRITICAL findings above in a pull request."; exit 1; }
+
+  - id: test
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        if ls tests/*.tftest.hcl >/dev/null 2>&1; then
+          terraform test || { echo "FAIL test: a test in tests/ failed; fix it in a pull request."; exit 1; }
+        else
+          echo "SKIP test: no tests/*.tftest.hcl files."
+        fi
+
+  - id: plan
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        terraform plan -input=false -lock-timeout=300s -out=tfplan ||
+          { echo "FAIL plan: read the error above; a missing role goes in deploy.roles (docs/how-to/troubleshoot-iam.md)."; exit 1; }
+
+  - id: policy
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        terraform show -json tfplan > tfplan.json &&
+          trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL tfplan.json ||
+          { echo "FAIL policy: the planned change breaks a HIGH or CRITICAL check; nothing was applied."; exit 1; }
+
+  - id: apply
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        terraform apply -input=false -lock-timeout=300s tfplan ||
+          { echo "FAIL apply: the apply stopped part-way; follow docs/how-to/recover-a-failed-deployment.md."; exit 1; }
+
+  - id: post
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        terraform plan -input=false -lock-timeout=300s -detailed-exitcode ||
+          { echo "FAIL post: the plan after apply is not empty, so something changed outside Terraform or a resource is not stable."; exit 1; }

@@ -1,0 +1,95 @@
+# Pull-request checks: pre-flight, fmt, init, validate, TFLint, security scan,
+# tests and a read-only plan. Runs as tf-ci-<environment>, which can read the
+# project and the state but cannot change anything, so nothing here deploys.
+#
+# The trigger (cicd/github.tf) supplies _ENVIRONMENT, _PROJECT_ID, _REGION and
+# _STATE_BUCKET from environments/<environment>.yaml. Each step prints
+# "FAIL <step>: what to do" when it fails.
+substitutions:
+  # Approved Terraform image, pinned by digest. Change it in both YAML files.
+  _TF_IMAGE: europe-west2-docker.pkg.dev/gcp-cicd-template/terraform-runtime/terraform@sha256:8fff2a67f0d00ffbb8df2859a862ba8952e9d9cd96af7ae58be8dd743d5e3b17
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  env:
+    - TF_IN_AUTOMATION=1
+    - TF_INPUT=0
+    - TF_VAR_project_id=${_PROJECT_ID}
+    - TF_VAR_region=${_REGION}
+    - TF_VAR_environment=${_ENVIRONMENT}
+
+timeout: 1200s
+
+steps:
+  - id: preflight
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args: [scripts/preflight.sh, --ci]
+
+  - id: fmt
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        terraform fmt -check -recursive -diff ||
+          { echo "FAIL fmt: run 'terraform fmt -recursive' and push the result."; exit 1; }
+
+  - id: init
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        terraform init -lockfile=readonly -backend-config=bucket=${_STATE_BUCKET} -backend-config=prefix=env/${_ENVIRONMENT} ||
+          { echo "FAIL init: check .terraform.lock.hcl matches versions.tf (docs/how-to/refresh-the-lock-file.md)."; exit 1; }
+
+  - id: validate
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        terraform validate &&
+          terraform -chdir=cicd init -backend=false -lockfile=readonly >/dev/null &&
+          terraform -chdir=cicd validate ||
+          { echo "FAIL validate: fix the errors above; run 'terraform validate' locally."; exit 1; }
+
+  - id: tflint
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        tflint --recursive --format compact ||
+          { echo "FAIL tflint: fix the findings above; run 'tflint --init && tflint --recursive' locally."; exit 1; }
+
+  - id: security
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL . ||
+          { echo "FAIL security: fix the HIGH or CRITICAL findings above (docs/how-to/troubleshoot-cloud-build.md)."; exit 1; }
+
+  - id: test
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        if ls tests/*.tftest.hcl >/dev/null 2>&1; then
+          terraform test || { echo "FAIL test: a test in tests/ failed; run 'terraform test' locally."; exit 1; }
+        else
+          echo "SKIP test: no tests/*.tftest.hcl files."
+        fi
+
+  - id: plan
+    name: ${_TF_IMAGE}
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        terraform plan -lock=false -input=false ||
+          { echo "FAIL plan: read the error above; missing read access is in docs/how-to/troubleshoot-iam.md."; exit 1; }

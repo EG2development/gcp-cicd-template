@@ -1,0 +1,14 @@
+# Code owners review changes in their area. The "main - protected" ruleset that
+# bootstrap creates makes their review required. Use teams, not people; a team
+# needs write access to the repository, and bootstrap grants it to
+# platform-engineering. The last matching line wins.
+
+# Everything else: your team. Uncomment and set your team's slug.
+# *            @EG2development/your-team
+
+# The pipeline, CI/CD identities and bootstrap decide what runs with deploy
+# rights, so Platform Engineering reviews changes to them.
+/cloudbuild/   @EG2development/platform-engineering
+/cicd/         @EG2development/platform-engineering
+/scripts/      @EG2development/platform-engineering
+/.github/      @EG2development/platform-engineering

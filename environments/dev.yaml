@@ -1,0 +1,17 @@
+# CI/CD settings for one environment. Edit project.id, then run:
+#   ./scripts/bootstrap.sh dev
+# Bootstrap and Cloud Build read this file. Everything else is derived.
+project:
+  id: my-gcp-project # the GCP project this environment deploys to
+  region: europe-west2 # where Cloud Build runs and Terraform state is stored
+
+environment:
+  name: dev # must match this file's name
+
+# Optional settings. Uncomment only what you need.
+# deploy:
+#   roles: # project roles Terraform needs to manage your resources
+#     - roles/storage.admin
+#   approval: true # default: true for prod and production, false otherwise
+# alerts:
+#   email: team@example.com # failed-build alerts; default: no email
