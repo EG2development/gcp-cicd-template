@@ -53,7 +53,7 @@ resource "google_monitoring_alert_policy" "deploy_failed" {
       filter = join(" AND ", [
         "resource.type=\"build\"",
         "resource.labels.build_trigger_id=\"${google_cloudbuild_trigger.deploy.trigger_id}\"",
-        "textPayload=~\"FAIL [a-z-]+:|ERROR: build step\"",
+        "textPayload=~\"FAIL |ERROR: build step\"",
       ])
     }
   }

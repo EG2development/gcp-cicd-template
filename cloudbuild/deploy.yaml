@@ -15,6 +15,11 @@ options:
   env:
     - TF_IN_AUTOMATION=1
     - TF_INPUT=0
+    - TF_CLI_ARGS_init=-no-color # plain text in the Cloud Build log
+    - TF_CLI_ARGS_validate=-no-color
+    - TF_CLI_ARGS_plan=-no-color
+    - TF_CLI_ARGS_apply=-no-color
+    - TF_CLI_ARGS_test=-no-color
     - TF_VAR_project_id=${_PROJECT_ID}
     - TF_VAR_region=${_REGION}
     - TF_VAR_environment=${_ENVIRONMENT}

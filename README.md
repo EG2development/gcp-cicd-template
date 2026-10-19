@@ -11,7 +11,8 @@ Use this template → set project.id → ./scripts/bootstrap.sh → pull request
 ## Quick start
 
 You need: Owner on the target GCP project (or the roles in
-[IAM](docs/reference/iam.md)), Terraform 1.16, the gcloud CLI and the GitHub CLI.
+[IAM](docs/reference/iam.md)), Terraform 1.16.6 or a later 1.16 release, the
+gcloud CLI and the GitHub CLI.
 
 1. Select **Use this template** and create your repository in `eg2development`.
 2. Clone it and set your project in `environments/dev.yaml`:

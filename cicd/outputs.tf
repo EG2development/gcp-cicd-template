@@ -25,7 +25,7 @@ output "summary" {
     Environment:      ${local.environment} in ${local.project_id} (${local.region})
     Pull requests:    trigger ${google_cloudbuild_trigger.ci.name}, runs cloudbuild/ci.yaml as ${google_service_account.ci.email}
     Merges to main:   trigger ${google_cloudbuild_trigger.deploy.name}, runs cloudbuild/deploy.yaml as ${google_service_account.deploy.email}
-    Approval needed:  ${local.approval_required ? "yes, gcloud builds approve BUILD_ID --project ${local.project_id} --location ${local.region}" : "no"}
+    Approval needed:  ${local.approval_required ? "yes, gcloud beta builds approve projects/${local.project_id}/locations/${local.region}/builds/BUILD_ID" : "no"}
     Terraform state:  gs://${google_storage_bucket.state.name}/env/${local.environment}
     Build logs:       gcloud builds list --project ${local.project_id} --region ${local.region}
   EOT

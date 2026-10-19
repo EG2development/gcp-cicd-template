@@ -19,9 +19,9 @@ variable "github_repository" {
 }
 
 variable "github_app_installation_id" {
-  description = "Installation of the Developer Connect GitHub App on the organisation. Platform Engineering sets the default once; null lets the browser step choose it."
+  description = "Installation of the Google Cloud Developer Connect GitHub App on the organisation, so the browser step only asks for Authorize. Platform Engineering sets it once (docs/how-to/set-up-the-organisation.md); null lets the browser step choose."
   type        = number
-  default     = null
+  default     = 172925456 # EG2development, all repositories, installed 19 October 2026
 }
 
 variable "iam_propagation_seconds" {

@@ -15,6 +15,13 @@ locals {
   approvers         = toset(try(local.deploy.approvers, []))
   deploy_roles      = toset(try(local.deploy.roles, []))
 
+  # Each environment needs its own project: the state bucket and the GitHub
+  # connection are per project, so two cicd/ states would fight over them.
+  shared_project = [
+    for file in fileset("${path.module}/../environments", "*.yaml") : trimsuffix(file, ".yaml")
+    if trimsuffix(file, ".yaml") != var.environment && try(yamldecode(file("${path.module}/../environments/${file}")).project.id, "") == local.project_id
+  ]
+
   repository   = split("/", var.github_repository)[1]
   link_id      = substr(trim(replace(lower(local.repository), "/[^a-z0-9-]+/", "-"), "-"), 0, 63)
   state_bucket = "${local.project_id}-tfstate"
@@ -99,6 +106,10 @@ resource "google_service_account" "ci" {
     precondition {
       condition     = local.environment == var.environment
       error_message = "environment.name in environments/${var.environment}.yaml must be ${var.environment}."
+    }
+    precondition {
+      condition     = length(local.shared_project) == 0
+      error_message = "environments/${join(".yaml, environments/", local.shared_project)}.yaml also use project ${local.project_id}. Give each environment its own project."
     }
   }
 }

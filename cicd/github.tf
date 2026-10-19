@@ -26,9 +26,11 @@ resource "google_developer_connect_connection" "github" {
     app_installation_id = var.github_app_installation_id
   }
 
-  # The browser authorisation fills in the credential afterwards.
+  # The browser authorisation fills in the credential afterwards. The
+  # installation stays managed: if someone picks a personal account in the
+  # browser, the next apply points the connection back at the organisation.
   lifecycle {
-    ignore_changes = [github_config[0].authorizer_credential, github_config[0].app_installation_id]
+    ignore_changes = [github_config[0].authorizer_credential]
   }
 
   depends_on = [google_project_iam_member.developer_connect_secrets]

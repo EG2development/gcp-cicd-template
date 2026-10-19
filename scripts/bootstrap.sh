@@ -46,7 +46,7 @@ else
   gcloud storage buckets create "gs://$STATE_BUCKET" --project "$PROJECT_ID" --location "$REGION" \
     --uniform-bucket-level-access --public-access-prevention --quiet >/dev/null ||
     stop "could not create gs://$STATE_BUCKET" \
-      "check storage.buckets.create on $PROJECT_ID; if the name is taken, see docs/how-to/troubleshoot-iam.md"
+      "check storage.buckets.create on $PROJECT_ID; bucket names are global, so if another project owns $STATE_BUCKET, see docs/how-to/troubleshoot-iam.md"
   gcloud storage buckets update "gs://$STATE_BUCKET" --versioning --quiet >/dev/null
 fi
 step_done
@@ -69,7 +69,10 @@ if [[ $stage != COMPLETE ]]; then
   link=$(gcloud developer-connect connections describe "$CONNECTION_ID" --project "$PROJECT_ID" --location "$REGION" \
     --format="value(installationState.actionUri)")
   printf '\n    One-time step for this project: authorise Developer Connect on GitHub.\n'
-  printf '    Open this link while signed in to GitHub, then return here:\n\n    %s\n\n' "$link"
+  printf '    Open this link, sign in to Google as %s and to GitHub as a member of %s:\n\n    %s\n\n' \
+    "$(gcloud config get-value account 2>/dev/null)" "${REPOSITORY%%/*}" "$link"
+  printf '    Then select Authorize. If GitHub asks where to install the app, choose %s.\n' "${REPOSITORY%%/*}"
+  printf '    Waiting up to 15 minutes; bootstrap carries on by itself.\n'
   if command -v open >/dev/null; then open "$link" 2>/dev/null || true; fi
   for _ in $(seq 1 180); do
     sleep 5
@@ -83,8 +86,19 @@ printf '    connection %s is ready\n' "$CONNECTION_ID"
 step_done
 
 step "Apply cicd/ (identities, IAM, repository link, triggers, alerting)"
-tf apply -input=false -auto-approve -compact-warnings ||
+apply_log=$(mktemp)
+if ! tf apply -input=false -auto-approve -compact-warnings 2>&1 | tee "$apply_log"; then
+  if grep -q 'not accessible to the' "$apply_log"; then
+    rm -f "$apply_log"
+    stop "the Developer Connect GitHub App cannot see $REPOSITORY" \
+      "the connection uses the app installation at $(gcloud developer-connect connections describe "$CONNECTION_ID" \
+        --project "$PROJECT_ID" --location "$REGION" --format='value(githubConfig.installationUri)'), which must be on ${REPOSITORY%%/*}
+      with access to this repository, not on a personal account. See docs/how-to/troubleshoot-cloud-build.md#connection"
+  fi
+  rm -f "$apply_log"
   stop "terraform apply failed for cicd/" "read the error above; docs/how-to/troubleshoot-iam.md lists the common causes"
+fi
+rm -f "$apply_log"
 ci_account=$(tf output -raw ci_service_account)
 ci_check=$(tf output -raw ci_check_name)
 step_done
@@ -126,7 +140,7 @@ fi
 rm -f "$smoke"
 step_done
 
-step "Protect main on GitHub"
+step "Protect main and turn on secret scanning (GitHub)"
 if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
   # Repository ruleset: pull requests, one approval, code owners, and this
   # environment's Cloud Build check. Organisation rulesets cannot name it
@@ -153,6 +167,15 @@ if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
   org=${REPOSITORY%%/*}
   gh api -X PUT "orgs/$org/teams/platform-engineering/repos/$REPOSITORY" -f permission=push >/dev/null 2>&1 ||
     warn "GitHub protection" "could not give @$org/platform-engineering write access; CODEOWNERS needs it"
+  # The organisation's default security configuration should already do this;
+  # setting it here covers organisations that have not applied one.
+  if gh api -X PATCH "repos/$REPOSITORY" --input - >/dev/null 2>&1 <<'EOF'; then
+{"security_and_analysis": {"secret_scanning": {"status": "enabled"}, "secret_scanning_push_protection": {"status": "enabled"}}}
+EOF
+    printf '    secret scanning and push protection are on\n'
+  else
+    warn "GitHub security" "could not turn on secret scanning (on GitHub Free it needs a public repository)"
+  fi
 else
   warn "GitHub protection" "gh is not installed or not logged in; run 'gh auth login' and re-run bootstrap to protect main"
 fi

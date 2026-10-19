@@ -81,11 +81,11 @@ check_terraform() {
   actual=$(terraform version -json | sed -n 's/.*"terraform_version": *"\([^"]*\)".*/\1/p')
   if [[ $actual == "$wanted" ]]; then
     pass "Terraform version" "$actual"
-  elif [[ ${actual%.*} == "${wanted%.*}" ]]; then
-    warn "Terraform version" "$actual locally; Cloud Build uses $wanted (same minor version, so this works)"
+  elif [[ ${actual%.*} == "${wanted%.*}" && ${actual##*.} =~ ^[0-9]+$ ]] && ((${actual##*.} > ${wanted##*.})); then
+    warn "Terraform version" "$actual locally; Cloud Build uses $wanted (versions.tf accepts both)"
   else
     fail "Terraform version" "found $actual, this repository uses $wanted" \
-      "versions.tf only accepts the $wanted minor line, so init and plan would fail" \
+      "versions.tf accepts $wanted up to the next minor version, so init and plan would fail" \
       "run 'tfenv install' in the repository root (reads .terraform-version), or install $wanted"
   fi
 }
@@ -101,7 +101,9 @@ check_provider_locks() {
       continue
     fi
     version=$(awk '/provider "registry.terraform.io\/hashicorp\/google"/ {f=1} f && /version/ {gsub(/[" ]/, "", $3); print $3; exit}' "$lock")
-    platforms=$(grep -c '"h1:' "$lock" || true)
+    # Fewest h1 hashes held by any provider: one per platform.
+    platforms=$(awk '/^provider /{if (seen) print n; seen=1; n=0} /"h1:/{n++} END{if (seen) print n}' "$lock" | sort -n | head -1)
+    platforms=${platforms:-0}
     if [[ -z $version ]]; then
       fail "Google provider" "$dir/.terraform.lock.hcl does not lock hashicorp/google" \
         "the provider version would float between runs" \
@@ -147,7 +149,9 @@ check_config() { # ENVIRONMENT
       "set environment.name: $1 in environments/$1.yaml"
   else
     pass "Configuration" "$PROJECT_ID, $REGION, $ENV_NAME"
+    return 0
   fi
+  return 1 # skip the GCP checks: they would only repeat this failure
 }
 
 check_gcp_auth() {
@@ -193,6 +197,8 @@ iam.serviceAccounts.actAs:roles/iam.serviceAccountUser
 resourcemanager.projects.setIamPolicy:roles/resourcemanager.projectIamAdmin
 storage.buckets.create:roles/storage.admin
 cloudbuild.builds.create:roles/cloudbuild.builds.editor
+logging.buckets.create:roles/logging.configWriter
+logging.sinks.create:roles/logging.configWriter
 monitoring.alertPolicies.create:roles/monitoring.editor"
 
 check_iam() {
@@ -210,12 +216,13 @@ check_iam() {
   done <<EOF
 $REQUIRED_PERMISSIONS
 EOF
+  roles=$(printf '%s\n' "$roles" | tr ' ' '\n' | awk NF | sort -u | paste -sd' ' -)
   if [[ -z $missing ]]; then
     pass "IAM" "you can create the CI/CD resources in $PROJECT_ID"
   else
     fail "IAM" "missing:$missing" \
       "bootstrap creates service accounts, IAM bindings, triggers and the state bucket as you" \
-      "ask a project owner for roles/owner on $PROJECT_ID, or for:$roles"
+      "ask a project owner for roles/owner on $PROJECT_ID, or for: $roles"
   fi
   if ! gcloud services list --project "$PROJECT_ID" --enabled --filter='config.name=developerconnect.googleapis.com' --format='value(config.name)' 2>/dev/null | grep -q .; then
     return 0
@@ -243,9 +250,9 @@ check_image() {
   elif gcloud artifacts docker images describe "$image" --format='value(image_summary.digest)' >/dev/null 2>&1; then
     pass "Terraform image" "${image##*/}"
   else
-    fail "Terraform image" "cannot read ${image%%@*}" \
-      "the image or your read access to the central registry is missing" \
-      "ask Platform Engineering for roles/artifactregistry.reader on the registry (docs/how-to/troubleshoot-iam.md)"
+    # Builds pull the image as the build identity, not as you. Bootstrap's
+    # smoke build proves that access, so this is only a warning.
+    warn "Terraform image" "you cannot read ${image%%@*}; bootstrap's smoke build checks the CI identity instead"
   fi
   if [[ $(sed -n 's/^ *_TF_IMAGE:.*@\(sha256:[0-9a-f]*\).*/\1/p' "$REPO_ROOT/cloudbuild/deploy.yaml" | head -1) != "${image#*@}" ]]; then
     fail "Terraform image" "ci.yaml and deploy.yaml use different images" \

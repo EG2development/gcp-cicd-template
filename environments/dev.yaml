@@ -13,5 +13,7 @@ environment:
 #   roles: # project roles Terraform needs to manage your resources
 #     - roles/storage.admin
 #   approval: true # default: true for prod and production, false otherwise
+#   approvers: # who can approve, when approval is on
+#     - group:platform-approvers@example.com
 # alerts:
 #   email: team@example.com # failed-build alerts; default: no email
