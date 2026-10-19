@@ -115,7 +115,7 @@ steps:
       - -c
       - |
         terraform apply -input=false -lock-timeout=300s tfplan ||
-          { echo "FAIL apply: the apply stopped part-way; follow docs/how-to/recover-a-failed-deployment.md."; exit 1; }
+          { echo "FAIL apply: some or all changes were not applied. An Error 403 means the deploy identity needs a role: add it to deploy.roles in environments/${_ENVIRONMENT}.yaml, run ./scripts/bootstrap.sh ${_ENVIRONMENT}, then re-run this build (docs/how-to/recover-a-failed-deployment.md)."; exit 1; }
 
   - id: post
     name: ${_TF_IMAGE}
