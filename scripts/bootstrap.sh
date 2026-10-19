@@ -58,7 +58,7 @@ tf init -input=false -reconfigure -lockfile=readonly \
 step_done
 
 step "Connect $PROJECT_ID to GitHub"
-tf apply -input=false -auto-approve -compact-warnings -target=google_developer_connect_connection.github ||
+tf apply -input=false -auto-approve -compact-warnings -target=google_developer_connect_connection.github -var=connect_only=true ||
   stop "could not create the Developer Connect connection" "see docs/how-to/troubleshoot-cloud-build.md#connection"
 connection_stage() {
   gcloud developer-connect connections describe "$CONNECTION_ID" --project "$PROJECT_ID" --location "$REGION" \

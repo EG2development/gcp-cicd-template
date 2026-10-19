@@ -24,6 +24,12 @@ variable "github_app_installation_id" {
   default     = 172925456 # EG2development, all repositories, installed 19 October 2026
 }
 
+variable "connect_only" {
+  description = "Set by bootstrap.sh while it creates the connection. Developer Connect accepts an app installation only after someone has authorised the connection, so the installation is set by the next, full apply."
+  type        = bool
+  default     = false
+}
+
 variable "iam_propagation_seconds" {
   description = "Wait after the first IAM grants, because Cloud Build checks the trigger identity's access when it creates a trigger."
   type        = number
