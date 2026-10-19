@@ -174,7 +174,6 @@ Outputs:
 
 ==> Protect main and turn on secret scanning (GitHub)
     ruleset "main - protected" requires: dev-ci (my-service-dev)
-WARN  GitHub protection    could not give @EG2development/platform-engineering write access; CODEOWNERS needs it
     secret scanning and push protection are on
     done in 3s
 
@@ -212,10 +211,6 @@ ruleset line. GitHub now protects `main`: a change needs a pull request, an
 approval and a passing `dev-ci` check. On GitHub Free this only works in public
 repositories, which is why we chose **Public**.
 [About the security model](../explanation/security-model.md) explains more.
-
-The pilot organisation had no `platform-engineering` team yet, so bootstrap
-printed a `WARN` for it. It does not stop anything. If you see it, tell
-Platform Engineering.
 
 ## Open a pull request
 
